@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聲音分貝計 & 即時音訊視覺化</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        tech: ['Orbitron', 'sans-serif'],
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        cyber: {
+                            dark: '#0a0e17',
+                            card: '#121824',
+                            accent: '#00f2fe',
+                            purple: '#7928ca',
+                            danger: '#ff0055',
+                            warning: '#ffbd00',
+                            safe: '#00f5d4'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #06090e;
+            color: #e2e8f0;
+            background-image: 
+                radial-gradient(circle at 50% 0%, rgba(0, 242, 254, 0.08) 0%, transparent 60%),
+                radial-gradient(circle at 85% 30%, rgba(121, 40, 202, 0.05) 0%, transparent 50%);
+        }
+        .glow-text {
+            text-shadow: 0 0 15px rgba(0, 242, 254, 0.6);
+        }
+        .glow-box {
+            box-shadow: 0 0 25px -5px rgba(0, 242, 254, 0.15);
+        }
+        .glow-box-danger {
+            box-shadow: 0 0 30px 0px rgba(255, 0, 85, 0.3);
+        }
+        /* 自訂 Canvas 發光效果 */
+        canvas {
+            filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.3));
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between font-sans selection:bg-cyan-500 selection:text-black">
+
+    <!-- 頂部導覽列 -->
+    <header class="border-b border-gray-800/80 bg-cyber-dark/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-gradient-to-tr from-cyan-500 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/20">
+                    <i class="fa-solid font-bold fa-microphone-lines text-xl text-black"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold font-tech tracking-wider bg-gradient-to-r from-cyan-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
+                        SOUND PULSE
+                    </h1>
+                    <p class="text-xs text-gray-400">即時分貝計與頻譜視覺化系統</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span id="statusIndicator" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-gray-400 border border-gray-700">
+                    <span class="w-2 h-2 rounded-full bg-gray-500" id="statusDot"></span>
+                    <span id="statusText">系統待命</span>
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區塊 -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+        <!-- 頂部卡片：數據儀表板與視覺化 Canvas -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- 左側：分貝數顯示與狀態卡片 (5 cols) -->
+            <div class="lg:col-span-5 flex flex-col gap-6">
+                <!-- 主分貝數顯示器 -->
+                <div class="bg-cyber-card/90 border border-gray-800 rounded-3xl p-6 relative overflow-hidden glow-box flex flex-col justify-between h-full">
+                    <!-- 背景裝飾線條 -->
+                    <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none"></div>
+                    
+                    <div class="flex justify-between items-start">
+                        <span class="text-xs uppercase tracking-widest text-gray-400 font-tech">Sound Level Meter</span>
+                        <div id="levelBadge" class="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 transition-all duration-300">
+                            極為安靜
+                        </div>
+                    </div>
+
+                    <!-- 數值核心 -->
+                    <div class="my-6 text-center">
+                        <div class="inline-flex items-baseline justify-center space-x-1">
+                            <span id="dbValue" class="text-7xl sm:text-8xl font-black font-tech tracking-tight text-white transition-all duration-100">
+                                --
+                            </span>
+                            <span class="text-xl font-bold text-gray-400 font-tech">dB</span>
+                        </div>
+                        <p id="levelDesc" class="text-sm text-gray-400 mt-2 font-medium">請點擊下方開始按鈕以啟用麥克風偵測</p>
+                    </div>
+
+                    <!-- 分貝量條 (Meter Bar) -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs text-gray-400 font-tech">
+                            <span>0 dB</span>
+                            <span>60 dB</span>
+                            <span>120+ dB</span>
+                        </div>
+                        <div class="w-full bg-gray-900 rounded-full h-3 p-0.5 border border-gray-800 relative overflow-hidden">
+                            <div id="meterProgress" class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-yellow-400 to-red-500 transition-all duration-150 w-0"></div>
+                        </div>
+                    </div>
+
+                    <!-- 統計小指標 -->
+                    <div class="grid grid-cols-3 gap-2 mt-6 pt-6 border-t border-gray-800/80 text-center">
+                        <div class="bg-gray-900/50 p-2.5 rounded-xl border border-gray-800/50">
+                            <span class="block text-[10px] text-gray-500 uppercase font-tech">MIN</span>
+                            <span id="minDb" class="text-lg font-bold font-tech text-gray-300">--</span>
+                        </div>
+                        <div class="bg-gray-900/50 p-2.5 rounded-xl border border-gray-800/50">
+                            <span class="block text-[10px] text-gray-500 uppercase font-tech">AVG</span>
+                            <span id="avgDb" class="text-lg font-bold font-tech text-cyan-400">--</span>
+                        </div>
+                        <div class="bg-gray-900/50 p-2.5 rounded-xl border border-gray-800/50">
+                            <span class="block text-[10px] text-gray-500 uppercase font-tech">MAX</span>
+                            <span id="maxDb" class="text-lg font-bold font-tech text-rose-400">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右側：音訊波形 / 頻譜視覺化區域 (7 cols) -->
+            <div class="lg:col-span-7 bg-cyber-card/90 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between glow-box relative">
+                
+                <!-- 頂部控制面板與切換標籤 -->
+                <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-wave-square text-cyan-400"></i>
+                        <h2 class="text-sm font-bold font-tech tracking-wider text-gray-200">REAL-TIME VISUALIZER</h2>
+                    </div>
+
+                    <!-- 模式切換 -->
+                    <div class="flex bg-gray-900/80 p-1 rounded-xl border border-gray-800">
+                        <button id="btnBars" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-cyan-500 text-black shadow-md">
+                            <i class="fa-solid fa-chart-simple mr-1"></i> 頻譜條
+                        </button>
+                        <button id="btnWave" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white transition-all">
+                            <i class="fa-solid fa-water mr-1"></i> 波形圖
+                        </button>
+                        <button id="btnCircle" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white transition-all">
+                            <i class="fa-solid fa-circle-notch mr-1"></i> 環形波
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Canvas 音訊圖表區 -->
+                <div class="relative w-full h-64 sm:h-80 bg-gray-950/60 rounded-2xl border border-gray-800/80 overflow-hidden flex items-center justify-center">
+                    <canvas id="visualizerCanvas" class="w-full h-full block"></canvas>
+                    
+                    <!-- 提示 overlay -->
+                    <div id="canvasOverlay" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 backdrop-blur-sm transition-opacity duration-300">
+                        <div class="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mb-3 animate-pulse">
+                            <i class="fa-solid fa-microphone text-cyan-400 text-2xl"></i>
+                        </div>
+                        <p class="text-sm text-gray-300 font-medium">尚未啟動音訊監聽</p>
+                        <p class="text-xs text-gray-500 mt-1">點擊下方按鈕以開始即時接收聲音輸入</p>
+                    </div>
+                </div>
+
+                <!-- 視覺化微調選項 -->
+                <div class="mt-4 pt-4 border-t border-gray-800/60 flex flex-wrap justify-between items-center gap-4 text-xs text-gray-400">
+                    <div class="flex items-center space-x-4">
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" id="smoothToggle" checked class="rounded bg-gray-800 border-gray-700 text-cyan-500 focus:ring-0">
+                            <span>平滑過濾</span>
+                        </label>
+                        <label class="flex items-center space-x-2">
+                            <span>敏感度:</span>
+                            <input type="range" id="sensitivitySlider" min="0.5" max="2" step="0.1" value="1" class="w-20 accent-cyan-400 bg-gray-800">
+                        </label>
+                    </div>
+                    <div class="text-gray-500">
+                        <i class="fa-solid fa-bolt text-yellow-500/80 mr-1"></i> Web Audio API 驅動
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 中間：控制器與歷史曲線圖 -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- 控制按鈕區 (4 cols) -->
+            <div class="lg:col-span-4 bg-cyber-card/90 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-sm font-bold font-tech tracking-wider text-gray-200 mb-2">
+                        <i class="fa-solid fa-sliders text-cyan-400 mr-2"></i>控制中心
+                    </h3>
+                    <p class="text-xs text-gray-400 mb-6">點擊開始按鈕將向瀏覽器請求麥克風使用權限。</p>
+                </div>
+
+                <div class="space-y-3">
+                    <button id="toggleBtn" class="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 text-gray-950 font-bold font-tech text-base tracking-wider hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-play text-lg"></i>
+                        <span>啟動音訊監聽</span>
+                    </button>
+                    
+                    <button id="resetStatsBtn" class="w-full py-2.5 px-4 rounded-xl bg-gray-800/80 hover:bg-gray-800 text-gray-300 text-xs font-semibold border border-gray-700/60 transition-all flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-rotate-right"></i>
+                        <span>重設統計極值 (MIN/MAX)</span>
+                    </button>
+                </div>
+
+                <!-- 警報切換功能 -->
+                <div class="mt-6 pt-4 border-t border-gray-800/80 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-semibold text-gray-300 block">高噪音警告</span>
+                        <span class="text-[10px] text-gray-500">超過 85 dB 時發出視覺提醒</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="alarmToggle" checked class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 歷史分貝波動圖 Canvas (8 cols) -->
+            <div class="lg:col-span-8 bg-cyber-card/90 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between">
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-chart-line text-cyan-400"></i>
+                        <h3 class="text-sm font-bold font-tech tracking-wider text-gray-200">HISTORICAL TREND (60s)</h3>
+                    </div>
+                    <span class="text-[10px] bg-gray-800 text-gray-400 px-2.5 py-1 rounded-md font-mono">1 FPS / sample</span>
+                </div>
+
+                <div class="w-full h-40 bg-gray-950/60 rounded-xl border border-gray-800/80 overflow-hidden relative">
+                    <canvas id="historyCanvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部：分貝等級參考卡片區 -->
+        <div class="bg-cyber-card/90 border border-gray-800 rounded-3xl p-6">
+            <h3 class="text-xs font-bold font-tech tracking-wider text-gray-400 uppercase mb-4">
+                <i class="fa-solid fa-circle-info mr-1.5 text-cyan-400"></i>環境分貝參考標準 (Decibel Reference Scale)
+            </h3>
+            
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div class="bg-gray-900/60 p-3 rounded-2xl border border-emerald-500/20 text-center">
+                    <span class="text-emerald-400 text-xs font-bold font-tech block">&lt; 30 dB</span>
+                    <span class="text-white text-xs font-semibold block mt-1">極為安靜</span>
+                    <span class="text-[10px] text-gray-500 block mt-0.5">樹葉微風聲、國家公園</span>
+                </div>
+                <div class="bg-gray-900/60 p-3 rounded-2xl border border-teal-500/20 text-center">
+                    <span class="text-teal-400 text-xs font-bold font-tech block">30 - 50 dB</span>
+                    <span class="text-white text-xs font-semibold block mt-1">安靜舒適</span>
+                    <span class="text-[10px] text-gray-500 block mt-0.5">圖書館、深夜住宅區</span>
+                </div>
+                <div class="bg-gray-900/60 p-3 rounded-2xl border border-yellow-500/20 text-center">
+                    <span class="text-yellow-400 text-xs font-bold font-tech block">50 - 70 dB</span>
+                    <span class="text-white text-xs font-semibold block mt-1">一般對話</span>
+                    <span class="text-[10px] text-gray-500 block mt-0.5">一般辦公室、普通談話</span>
+                </div>
+                <div class="bg-gray-900/60 p-3 rounded-2xl border border-orange-500/20 text-center">
+                    <span class="text-orange-400 text-xs font-bold font-tech block">70 - 85 dB</span>
+                    <span class="text-white text-xs font-semibold block mt-1">較為吵雜</span>
+                    <span class="text-[10px] text-gray-500 block mt-0.5">繁忙交通路口、吸塵器</span>
+                </div>
+                <div class="bg-gray-900/60 p-3 rounded-2xl border border-rose-500/20 text-center">
+                    <span class="text-rose-400 text-xs font-bold font-tech block">85 - 100 dB</span>
+                    <span class="text-white text-xs font-semibold block mt-1">危害聽力</span>
+                    <span class="text-[10px] text-gray-500 block mt-0.5">工地工程、割草機</span>
+                </div>
+                <div class="bg-gray-900/60 p-3 rounded-2xl border border-purple-500/20 text-center">
+                    <span class="text-purple-400 text-xs font-bold font-tech block">&gt; 100 dB</span>
+                    <span class="text-white text-xs font-semibold block mt-1">極度危險</span>
+                    <span class="text-[10px] text-gray-500 block mt-0.5">演唱會喇叭前、飛機起飛</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 頁尾 -->
+    <footer class="border-t border-gray-800/80 bg-cyber-dark text-center py-4 text-xs text-gray-500">
+        <p>SOUND PULSE &copy; 2026 - HTML5 Audio API & Canvas Powered</p>
+    </footer>
+
+    <!-- JavaScript 邏輯程式碼 -->
+    <script>
+        // --- 變數宣告與初始化 ---
+        let audioCtx = null;
+        let analyser = null;
+        let microphone = null;
+        let isListening = false;
+        let animFrameId = null;
+
+        // 數據統計變數
+        let minDecibels = Infinity;
+        let maxDecibels = -Infinity;
+        let dbHistory = new Array(60).fill(0); // 歷史圖表60個點
+        let dbSum = 0;
+        let dbCount = 0;
+
+        // 視覺化模式: 'bars' | 'wave' | 'circle'
+        let visualMode = 'bars';
+
+        // DOM 元素引用
+        const toggleBtn = document.getElementById('toggleBtn');
+        const resetStatsBtn = document.getElementById('resetStatsBtn');
+        const dbValueEl = document.getElementById('dbValue');
+        const levelBadge = document.getElementById('levelBadge');
+        const levelDesc = document.getElementById('levelDesc');
+        const meterProgress = document.getElementById('meterProgress');
+        const canvasOverlay = document.getElementById('canvasOverlay');
+
+        const minDbEl = document.getElementById('minDb');
+        const maxDbEl = document.getElementById('maxDb');
+        const avgDbEl = document.getElementById('avgDb');
+
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+
+        // Visualizer Canvas
+        const vizCanvas = document.getElementById('visualizerCanvas');
+        const vizCtx = vizCanvas.getContext('2d');
+
+        // History Canvas
+        const historyCanvas = document.getElementById('historyCanvas');
+        const historyCtx = historyCanvas.getContext('2d');
+
+        // 控制按鈕 DOM
+        const btnBars = document.getElementById('btnBars');
+        const btnWave = document.getElementById('btnWave');
+        const btnCircle = document.getElementById('btnCircle');
+        const smoothToggle = document.getElementById('smoothToggle');
+        const sensitivitySlider = document.getElementById('sensitivitySlider');
+        const alarmToggle = document.getElementById('alarmToggle');
+
+        // --- Canvas 尺寸自適應調整 ---
+        function resizeCanvases() {
+            vizCanvas.width = vizCanvas.parentElement.clientWidth * window.devicePixelRatio;
+            vizCanvas.height = vizCanvas.parentElement.clientHeight * window.devicePixelRatio;
+            
+            historyCanvas.width = historyCanvas.parentElement.clientWidth * window.devicePixelRatio;
+            historyCanvas.height = historyCanvas.parentElement.clientHeight * window.devicePixelRatio;
+        }
+        window.addEventListener('resize', resizeCanvases);
+        resizeCanvases();
+
+        // --- 模式切換事件設定 ---
+        function setVisualMode(mode) {
+            visualMode = mode;
+            [btnBars, btnWave, btnCircle].forEach(btn => {
+                btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white transition-all";
+            });
+            if (mode === 'bars') btnBars.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 text-black shadow-md";
+            if (mode === 'wave') btnWave.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 text-black shadow-md";
+            if (mode === 'circle') btnCircle.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 text-black shadow-md";
+        }
+
+        btnBars.addEventListener('click', () => setVisualMode('bars'));
+        btnWave.addEventListener('click', () => setVisualMode('wave'));
+        btnCircle.addEventListener('click', () => setVisualMode('circle'));
+
+        // --- 開始/停止麥克風監聽 ---
+        toggleBtn.addEventListener('click', async () => {
+            if (!isListening) {
+                await startListening();
+            } else {
+                stopListening();
+            }
+        });
+
+        async function startListening() {
+            try {
+                // 建立 Web Audio 上下文
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+
+                // 請求麥克風權限
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+                // 建立分析節點 (AnalyserNode)
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256; 
+                analyser.smoothingTimeConstant = smoothToggle.checked ? 0.8 : 0;
+
+                microphone = audioCtx.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                isListening = true;
+                
+                // 更新 UI 狀態
+                toggleBtn.innerHTML = `<i class="fa-solid fa-square text-lg"></i><span>停止音訊監聽</span>`;
+                toggleBtn.className = "w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 text-white font-bold font-tech text-base tracking-wider hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-rose-500/20 flex items-center justify-center space-x-2";
+                
+                canvasOverlay.classList.add('opacity-0', 'pointer-events-none');
+                statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+                statusText.textContent = "即時監聽中";
+
+                // 開始歷史資料記錄計時器 (每秒上記記錄)
+                startHistoryTimer();
+
+                // 啟動渲染動畫迴圈
+                drawLoop();
+
+            } catch (err) {
+                console.error("無法存取麥克風:", err);
+                alert("無法存取麥克風。請確認已允許瀏覽器使用麥克風權限！");
+            }
+        }
+
+        function stopListening() {
+            if (microphone && microphone.mediaStream) {
+                microphone.mediaStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioCtx) {
+                audioCtx.close();
+            }
+            cancelAnimationFrame(animFrameId);
+            clearInterval(historyInterval);
+
+            isListening = false;
+
+            // 恢復 UI 狀態
+            toggleBtn.innerHTML = `<i class="fa-solid fa-play text-lg"></i><span>啟動音訊監聽</span>`;
+            toggleBtn.className = "w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 text-gray-950 font-bold font-tech text-base tracking-wider hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center space-x-2";
+            
+            canvasOverlay.classList.remove('opacity-0', 'pointer-events-none');
+            statusDot.className = "w-2 h-2 rounded-full bg-gray-500";
+            statusText.textContent = "系統待命";
+
+            // 清空畫布
+            vizCtx.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
+        }
+
+        // 重設統計數據
+        resetStatsBtn.addEventListener('click', () => {
+            minDecibels = Infinity;
+            maxDecibels = -Infinity;
+            dbSum = 0;
+            dbCount = 0;
+            minDbEl.textContent = '--';
+            maxDbEl.textContent = '--';
+            avgDbEl.textContent = '--';
+        });
+
+        smoothToggle.addEventListener('change', (e) => {
+            if (analyser) {
+                analyser.smoothingTimeConstant = e.target.checked ? 0.8 : 0;
+            }
+        });
+
+        // --- 音訊數據計算與渲染迴圈 ---
+        function drawLoop() {
+            if (!isListening) return;
+
+            // 取得頻譜與時域數據
+            const bufferLength = analyser.frequencyBinCount;
+            const timeData = new Uint8Array(bufferLength);
+            const freqData = new Uint8Array(bufferLength);
+
+            analyser.getByteTimeDomainData(timeData);
+            analyser.getByteFrequencyData(freqData);
+
+            // 1. 計算均方根 (RMS) 並轉為 approximate dB
+            let sumSquares = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const norm = (timeData[i] - 128) / 128; // 歸一化到 [-1, 1]
+                sumSquares += norm * norm;
+            }
+            const rms = Math.sqrt(sumSquares / bufferLength);
+
+            // 套用敏感度調節
+            const sensitivity = parseFloat(sensitivitySlider.value);
+            const adjustedRms = rms * sensitivity;
+
+            // 將 RMS 換算為相對分貝 (網頁麥克風無校準，以 0-120dB 為動態映射範圍)
+            let decibels = 0;
+            if (adjustedRms > 0) {
+                // -60dB 到 0dB 映射至 20dB - 110dB 實用區間
+                const dbRaw = 20 * Math.log10(adjustedRms);
+                decibels = Math.max(0, Math.round(dbRaw + 90));
+            }
+
+            // 更新 UI 數據顯示
+            updateDbUI(decibels);
+
+            // 2. 畫 Canvas 音訊視覺化
+            renderVisualizer(freqData, timeData);
+
+            // 3. 畫歷史曲線圖
+            renderHistoryChart();
+
+            animFrameId = requestAnimationFrame(drawLoop);
+        }
+
+        // --- 更新 UI 分貝文字與警報等級 ---
+        function updateDbUI(db) {
+            dbValueEl.textContent = db;
+
+            // 統計 Min/Max/Avg
+            if (db > 0) {
+                if (db < minDecibels) minDecibels = db;
+                if (db > maxDecibels) maxDecibels = db;
+                dbSum += db;
+                dbCount++;
+
+                minDbEl.textContent = minDecibels;
+                maxDbEl.textContent = maxDecibels;
+                avgDbEl.textContent = Math.round(dbSum / dbCount);
+            }
+
+            // 進度條長度
+            const percentage = Math.min(100, Math.max(0, (db / 110) * 100));
+            meterProgress.style.width = `${percentage}%`;
+
+            // 分貝等級與警示顏色判斷
+            let badgeText = "極為安靜";
+            let badgeStyle = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+            let descText = "環境非常幽靜，適合沉思與睡眠。";
+
+            if (db >= 30 && db < 50) {
+                badgeText = "安靜舒適";
+                badgeStyle = "bg-teal-500/10 text-teal-400 border-teal-500/20";
+                descText = "相當於安靜的圖書館或深夜住宅區。";
+            } else if (db >= 50 && db < 70) {
+                badgeText = "適中對話";
+                badgeStyle = "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
+                descText = "相當於一般辦公室、對話或輕柔音樂。";
+            } else if (db >= 70 && db < 85) {
+                badgeText = "環境吵雜";
+                badgeStyle = "bg-orange-500/10 text-orange-400 border-orange-500/20";
+                descText = "相當於繁華街道交通聲或吸塵器音量。";
+            } else if (db >= 85) {
+                badgeText = "危險高音量";
+                badgeStyle = "bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse";
+                descText = "長期暴露可能損傷聽力，建議配戴防音具。";
+            }
+
+            levelBadge.textContent = badgeText;
+            levelBadge.className = `px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-300 ${badgeStyle}`;
+            levelDesc.textContent = descText;
+
+            // 高音量警報閃爍效果
+            if (db >= 85 && alarmToggle.checked) {
+                document.body.classList.add('bg-red-950/20');
+            } else {
+                document.body.classList.remove('bg-red-950/20');
+            }
+        }
+
+        // --- Canvas 主視覺化繪製 (等化器/波形) ---
+        function renderVisualizer(freqData, timeData) {
+            const width = vizCanvas.width;
+            const height = vizCanvas.height;
+
+            vizCtx.clearRect(0, 0, width, height);
+
+            if (visualMode === 'bars') {
+                // --- 1. 柱狀等化器 Bars ---
+                const barCount = 32;
+                const barWidth = (width / barCount) * 0.65;
+                const gap = (width / barCount) * 0.35;
+
+                for (let i = 0; i < barCount; i++) {
+                    const value = freqData[i * 2] || 0; 
+                    const barHeight = (value / 255) * height * 0.85;
+                    const x = i * (barWidth + gap) + gap / 2;
+                    const y = height - barHeight;
+
+                    // 建立動態漸層
+                    const gradient = vizCtx.createLinearGradient(0, height, 0, 0);
+                    gradient.addColorStop(0, 'rgba(0, 242, 254, 0.2)');
+                    gradient.addColorStop(0.6, 'rgba(0, 242, 254, 0.8)');
+                    gradient.addColorStop(1, 'rgba(255, 0, 85, 1)');
+
+                    vizCtx.fillStyle = gradient;
+                    // 圓角柱狀圖
+                    vizCtx.beginPath();
+                    vizCtx.roundRect(x, y, barWidth, barHeight, [6, 6, 0, 0]);
+                    vizCtx.fill();
+
+                    // 頂部跳動小亮點 (Cap)
+                    vizCtx.fillStyle = '#ffffff';
+                    vizCtx.fillRect(x, Math.max(0, y - 6), barWidth, 3);
+                }
+
+            } else if (visualMode === 'wave') {
+                // --- 2. 即時波形圖 Waveform ---
+                vizCtx.lineWidth = 3 * window.devicePixelRatio;
+                vizCtx.strokeStyle = '#00f2fe';
+                vizCtx.beginPath();
+
+                const sliceWidth = width / timeData.length;
+                let x = 0;
+
+                for (let i = 0; i < timeData.length; i++) {
+                    const v = timeData[i] / 128.0; // 128 為中心
+                    const y = (v * height) / 2;
+
+                    if (i === 0) {
+                        vizCtx.moveTo(x, y);
+                    } else {
+                        vizCtx.lineTo(x, y);
+                    }
+                    x += sliceWidth;
+                }
+
+                vizCtx.lineTo(width, height / 2);
+                vizCtx.stroke();
+
+                // 下方微亮陰影
+                vizCtx.lineTo(width, height);
+                vizCtx.lineTo(0, height);
+                vizCtx.fillStyle = 'rgba(0, 242, 254, 0.05)';
+                vizCtx.fill();
+
+            } else if (visualMode === 'circle') {
+                // --- 3. 環形動態波 Circle ---
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const radius = Math.min(width, height) * 0.25;
+
+                vizCtx.beginPath();
+                vizCtx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                vizCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                vizCtx.lineWidth = 2;
+                vizCtx.stroke();
+
+                const numPoints = 64;
+                vizCtx.beginPath();
+                vizCtx.strokeStyle = '#00f2fe';
+                vizCtx.lineWidth = 3 * window.devicePixelRatio;
+
+                for (let i = 0; i < numPoints; i++) {
+                    const angle = (i / numPoints) * Math.PI * 2;
+                    const value = freqData[i % freqData.length] || 0;
+                    const offset = (value / 255) * 50 * window.devicePixelRatio;
+                    const r = radius + offset;
+
+                    const x = centerX + Math.cos(angle) * r;
+                    const y = centerY + Math.sin(angle) * r;
+
+                    if (i === 0) {
+                        vizCtx.moveTo(x, y);
+                    } else {
+                        vizCtx.lineTo(x, y);
+                    }
+                }
+                vizCtx.closePath();
+                vizCtx.stroke();
+            }
+        }
+
+        // --- 歷史紀錄計時器與繪製 ---
+        let historyInterval = null;
+        function startHistoryTimer() {
+            clearInterval(historyInterval);
+            historyInterval = setInterval(() => {
+                if (!isListening) return;
+                const currentDb = parseInt(dbValueEl.textContent) || 0;
+                dbHistory.push(currentDb);
+                if (dbHistory.length > 60) {
+                    dbHistory.shift();
+                }
+            }, 1000);
+        }
+
+        function renderHistoryChart() {
+            const w = historyCanvas.width;
+            const h = historyCanvas.height;
+
+            historyCtx.clearRect(0, 0, w, h);
+
+            // 背景參考格線
+            historyCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            historyCtx.lineWidth = 1;
+            for (let y = 0; y <= h; y += h / 4) {
+                historyCtx.beginPath();
+                historyCtx.moveTo(0, y);
+                historyCtx.lineTo(w, y);
+                historyCtx.stroke();
+            }
+
+            if (dbHistory.length < 2) return;
+
+            // 繪製歷史平滑曲線
+            historyCtx.beginPath();
+            const step = w / (dbHistory.length - 1);
+
+            for (let i = 0; i < dbHistory.length; i++) {
+                const val = dbHistory[i];
+                const x = i * step;
+                const y = h - (val / 120) * h; // 0 - 120 dB 垂直映射
+
+                if (i === 0) {
+                    historyCtx.moveTo(x, y);
+                } else {
+                    historyCtx.lineTo(x, y);
+                }
+            }
+
+            historyCtx.strokeStyle = '#00f5d4';
+            historyCtx.lineWidth = 2 * window.devicePixelRatio;
+            historyCtx.stroke();
+
+            // 填滿下方區域漸層
+            historyCtx.lineTo(w, h);
+            historyCtx.lineTo(0, h);
+            const fillGrad = historyCtx.createLinearGradient(0, 0, 0, h);
+            fillGrad.addColorStop(0, 'rgba(0, 245, 212, 0.25)');
+            fillGrad.addColorStop(1, 'rgba(0, 245, 212, 0.0)');
+            historyCtx.fillStyle = fillGrad;
+            historyCtx.fill();
+        }
+    </script>
+</body>
+</html>
